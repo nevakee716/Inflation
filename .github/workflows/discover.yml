@@ -8,17 +8,23 @@ jobs:
     steps:
       - run: |
           B=https://bdm.insee.fr/series/sdmx
-          curl -sS "$B/dataflow" -o df.xml; echo "size $(wc -c < df.xml)"
-          grep -o 'id="[^"]*IPC[^"]*"' df.xml | sort -u
-          grep -o 'id="[^"]*POND[^"]*"' df.xml | sort -u
-          for d in IPC-2015 IPC-2025; do
+          C="curl -sS --compressed --max-time 180 --retry 3"
+          for d in IPC-2025 IPC-2015; do
             echo "=== DSD $d"
-            curl -sS "$B/datastructure/FR1/$d" -o dsd.xml; echo "size $(wc -c < dsd.xml)"
-            grep -oE '<str:(Dimension|TimeDimension) [^>]*id="[^"]*"[^>]*position="[0-9]+"' dsd.xml | grep -oE 'id="[^"]*"|position="[0-9]+"' | paste - - 
-            echo "--- sample"
-            curl -sS "$B/data/$d?lastNObservations=1&firstNObservations=0" -o s.xml || true
-            echo "size $(wc -c < s.xml)"; grep -o '<Series [^>]*>' s.xml | head -40
-            grep -c '<Series ' s.xml
+            $C "$B/datastructure/FR1/$d?references=children" -o dsd.xml; echo "size $(wc -c < dsd.xml)"
+            python3 - <<'PY'
+          import re
+          x=open('dsd.xml',encoding='utf-8').read()
+          for cl in re.finditer(r'<str:Codelist [^>]*id="([^"]+)"[^>]*>(.*?)</str:Codelist>', x, re.S):
+              codes=re.findall(r'<str:Code [^>]*id="([^"]+)"[^>]*>\s*<com:Name xml:lang="fr">([^<]*)', cl.group(2))
+              print("CL", cl.group(1), len(codes))
+              for c in codes[:60]: print("   ", c[0], "|", c[1])
+          for m in re.finditer(r'<str:(Dimension|TimeDimension|Attribute) [^>]*?id="([^"]+)"[^>]*?(position="\d+")?', x): print(m.group(1), m.group(2), m.group(3))
+          PY
+            echo "--- sample M + wildcards"
+            $C "$B/data/$d/M............?lastNObservations=1" -o s.xml || true
+            echo "size $(wc -c < s.xml 2>/dev/null)"
+            grep -c '<Series ' s.xml || true
+            grep -o '<Series [^>]*>' s.xml | grep -i 'ensemble\|00' | head -30 || true
+            grep -o '<Series [^>]*>' s.xml | head -5 || true
           done
-          echo "=== 001759970"
-          curl -sS "$B/data/SERIES_BDM/001759970?lastNObservations=2" | head -c 3000
