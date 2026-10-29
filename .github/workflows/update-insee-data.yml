@@ -7,7 +7,7 @@ on:
     - cron: '17 6 * * *'
   workflow_dispatch:
   push:
-    branches: [main, claude/project-thread-6efbtj]
+    branches: [main]
     paths:
       - scripts/fetch-insee.mjs
       - scripts/sdmx.mjs
