@@ -1,0 +1,47 @@
+# Name referenced by deploy.yml (workflow_run trigger): keep it in sync.
+name: Update INSEE data
+
+on:
+  schedule:
+    # INSEE publishes the CPI mid-month (provisional estimate at month end); a daily check is cheap.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main, claude/project-thread-6efbtj]
+    paths:
+      - scripts/fetch-insee.mjs
+      - scripts/sdmx.mjs
+      - .github/workflows/update-insee-data.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-insee-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Fetch CPI from INSEE
+        run: node scripts/fetch-insee.mjs --out data/insee/ipc.json
+
+      - name: Commit changes
+        run: |
+          git add data/insee/ipc.json
+          if git diff --cached --quiet; then
+            echo "No data change."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(data): update INSEE CPI ($(node -p "require('./data/insee/ipc.json').lastObservation"))"
+          git push
