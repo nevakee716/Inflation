@@ -1,0 +1,24 @@
+name: discover-insee (temporary)
+on:
+  push:
+    branches: [claude/project-thread-6efbtj]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          B=https://bdm.insee.fr/series/sdmx
+          curl -sS "$B/dataflow" -o df.xml; echo "size $(wc -c < df.xml)"
+          grep -o 'id="[^"]*IPC[^"]*"' df.xml | sort -u
+          grep -o 'id="[^"]*POND[^"]*"' df.xml | sort -u
+          for d in IPC-2015 IPC-2025; do
+            echo "=== DSD $d"
+            curl -sS "$B/datastructure/FR1/$d" -o dsd.xml; echo "size $(wc -c < dsd.xml)"
+            grep -oE '<str:(Dimension|TimeDimension) [^>]*id="[^"]*"[^>]*position="[0-9]+"' dsd.xml | grep -oE 'id="[^"]*"|position="[0-9]+"' | paste - - 
+            echo "--- sample"
+            curl -sS "$B/data/$d?lastNObservations=1&firstNObservations=0" -o s.xml || true
+            echo "size $(wc -c < s.xml)"; grep -o '<Series [^>]*>' s.xml | head -40
+            grep -c '<Series ' s.xml
+          done
+          echo "=== 001759970"
+          curl -sS "$B/data/SERIES_BDM/001759970?lastNObservations=2" | head -c 3000
