@@ -5,9 +5,7 @@
 //
 // Source: https://bdm.insee.fr/series/sdmx (public, no API key).
 // - Indices come from the base 2025 dataflow (IPC-2025, COICOP 2018), all households, France entière.
-// - Before the base 2025 series start, history is back-filled from the base 2015 dataflow
-//   (IPC-2015, COICOP 2016) for codes whose scope is unchanged between the two nomenclatures,
-//   rescaled at the first common month ("chained": true on the series).
+//   INSEE back-casts the base 2025 series to 1996, so no chaining with base 2015 is needed.
 // - Weights ("pondérations", per 10 000) come from the POND series of the same dataflow.
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -23,10 +21,6 @@ const arg = (name, fallback) => {
 }
 const OUT = arg('out', 'data/insee/ipc.json')
 const MAX_LEVEL = Number(arg('max-level', '2'))
-
-// COICOP 2016 -> 2018 divisions 01 to 07 keep the same scope, so their history can be chained.
-// 08 to 13 were redrawn in COICOP 2018 (information & communication, insurance, personal care...).
-const CHAINABLE = /^(00|0[1-7])$/
 
 // Key order of IPC-2015 / IPC-2025:
 // FREQ.INDICATEUR.FORME-VENTE.COICOP.PRIX_CONSO.NATURE.MENAGES_IPC.REF_AREA.UNIT_MEASURE.CORRECTION.BASIND.SERIE_ARRETEE
@@ -71,6 +65,18 @@ async function fetchByCodes(dataflow, codes, opts, query = '') {
   return all
 }
 
+// Pretty-print with one observation per line: readable, and monthly updates give small git diffs.
+function format(doc) {
+  const { series, ...meta } = doc
+  const head = JSON.stringify(meta, null, 2).slice(0, -2)
+  const body = series.map(({ observations, ...s }) => {
+    const fields = JSON.stringify(s, null, 2).slice(2, -2).replace(/^/gm, '    ')
+    const obs = observations.map((o) => `        ${JSON.stringify(o)}`).join(',\n')
+    return `    {\n${fields},\n      "observations": [\n${obs}\n      ]\n    }`
+  })
+  return `${head},\n  "series": [\n${body.join(',\n')}\n  ]\n}\n`
+}
+
 async function main() {
   console.log(`Fetching INSEE CPI (max COICOP level ${MAX_LEVEL})`)
 
@@ -98,39 +104,10 @@ async function main() {
     console.warn(`  weights unavailable: ${err.message}`)
   }
 
-  // 3. Back-fill history from base 2015 for chainable codes.
-  const firstDate = indices.reduce((min, s) => (s.observations[0].date < min ? s.observations[0].date : min), '9999')
-  const history = new Map()
-  const chainCodes = codes.filter((c) => CHAINABLE.test(c.slice(0, 2)))
-  if (firstDate > '1999' && chainCodes.length) {
-    try {
-      const raw2015 = await fetchByCodes('IPC-2015', chainCodes, { basind: '2015' })
-      for (const s of raw2015) if (s.observations.length) history.set(s.attrs.COICOP2016, s)
-      console.log(`  IPC-2015 history: ${history.size} series`)
-    } catch (err) {
-      console.warn(`  base 2015 history unavailable: ${err.message}`)
-    }
-  }
-
   const series = indices
     .map((s) => {
       const code = s.attrs.COICOP2018
-      let observations = s.observations.map(({ date, value }) => ({ date, value }))
-      let chained = false
-      const old = history.get(code)
-      if (old) {
-        const pivot = observations.find((o) => old.observations.some((p) => p.date === o.date))
-        if (pivot) {
-          const ratio = pivot.value / old.observations.find((p) => p.date === pivot.date).value
-          const before = old.observations
-            .filter((p) => p.date < observations[0].date)
-            .map(({ date, value }) => ({ date, value: Math.round(value * ratio * 100) / 100 }))
-          if (before.length) {
-            observations = [...before, ...observations]
-            chained = true
-          }
-        }
-      }
+      const observations = s.observations.map(({ date, value }) => ({ date, value }))
       const w = weights.get(code)
       return {
         key: code,
@@ -140,8 +117,6 @@ async function main() {
         parent: parentOf(code),
         weight: w?.value ?? null,
         weightYear: w?.year ?? null,
-        chained,
-        ...(chained ? { chainedFrom: old.attrs.IDBANK } : {}),
         lastUpdate: s.attrs.LAST_UPDATE ?? null,
         observations,
       }
@@ -171,7 +146,7 @@ async function main() {
     }
   } catch {}
   await mkdir(dirname(OUT), { recursive: true })
-  await writeFile(OUT, JSON.stringify(doc, null, 1) + '\n')
+  await writeFile(OUT, format(doc))
   console.log(`Wrote ${OUT}: ${series.length} series, last observation ${doc.lastObservation}.`)
 }
 
