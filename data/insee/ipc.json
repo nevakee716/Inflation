@@ -6,8 +6,8 @@
   "nomenclature": "COICOP 2018",
   "population": "Ensemble des ménages, France",
   "weightUnit": "pour 10000",
-  "fetchedAt": "2026-10-29T10:32:16.498Z",
-  "lastObservation": "2026-09",
+  "fetchedAt": "2026-10-30T12:59:44.454Z",
+  "lastObservation": "2026-10",
   "series": [
     {
       "key": "00",
@@ -17,7 +17,7 @@
       "parent": null,
       "weight": 10000,
       "weightYear": "2026",
-      "lastUpdate": "2026-10-15",
+      "lastUpdate": "2026-10-30",
       "observations": [
         {"date":"1996-01","value":62.81},
         {"date":"1996-02","value":63.05},
@@ -387,7 +387,8 @@
         {"date":"2026-06","value":102.11},
         {"date":"2026-07","value":102.68},
         {"date":"2026-08","value":103.35},
-        {"date":"2026-09","value":103.07}
+        {"date":"2026-09","value":103.07},
+        {"date":"2026-10","value":103.47}
       ]
     },
     {
